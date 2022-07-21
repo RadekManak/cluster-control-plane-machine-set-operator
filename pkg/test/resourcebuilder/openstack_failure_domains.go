@@ -75,9 +75,7 @@ type OpenStackFailureDomainBuilder struct {
 
 // Build builds a OpenStack failuredomain from the configuration.
 func (m OpenStackFailureDomainBuilder) Build() machinev1.OpenStackFailureDomain {
-	return machinev1.OpenStackFailureDomain{
-		AvailabilityZone: m.availabilityZone,
-	}
+	return machinev1.OpenStackFailureDomain{}
 }
 
 // WithAvailabilityZone sets the availability zone for the OpenStack failuredomain builder.

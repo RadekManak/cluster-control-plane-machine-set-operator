@@ -111,6 +111,18 @@ var _ = Describe("Provider Config", func() {
 				providerSpecBuilder:   resourcebuilder.GCPProviderSpec(),
 				providerConfigMatcher: HaveField("GCP().Config()", *resourcebuilder.GCPProviderSpec().Build()),
 			}),
+			Entry("with an OpenStack config with failure domains", providerConfigTableInput{
+				expectedPlatformType:  configv1.OpenStackPlatformType,
+				failureDomainsBuilder: resourcebuilder.OpenStackFailureDomains(),
+				providerSpecBuilder:   resourcebuilder.OpenStackProviderSpec(),
+				providerConfigMatcher: HaveField("OpenStack().Config()", *resourcebuilder.OpenStackProviderSpec().Build()),
+			}),
+			Entry("with an OpenStack config without failure domains", providerConfigTableInput{
+				expectedPlatformType:  configv1.OpenStackPlatformType,
+				failureDomainsBuilder: nil,
+				providerSpecBuilder:   resourcebuilder.OpenStackProviderSpec(),
+				providerConfigMatcher: HaveField("OpenStack().Config()", *resourcebuilder.OpenStackProviderSpec().Build()),
+			}),
 		)
 	})
 
@@ -237,6 +249,32 @@ var _ = Describe("Provider Config", func() {
 				matchPath:        "GCP().Config().Zone",
 				matchExpectation: "us-central1-b",
 			}),
+			Entry("when keeping an OpenStack availability zone the same", injectFailureDomainTableInput{
+				providerConfig: &providerConfig{
+					platformType: configv1.OpenStackPlatformType,
+					openstack: OpenStackProviderConfig{
+						providerConfig: *resourcebuilder.OpenStackProviderSpec().WithAvailabilityZone("az-1").Build(),
+					},
+				},
+				failureDomain: failuredomain.NewOpenStackFailureDomain(
+					resourcebuilder.OpenStackFailureDomain().WithAvailabilityZone("az-1").Build(),
+				),
+				matchPath:        "OpenStack().Config().AvailabilityZone",
+				matchExpectation: "az-1",
+			}),
+			Entry("when changing an OpenStack availability zone", injectFailureDomainTableInput{
+				providerConfig: &providerConfig{
+					platformType: configv1.OpenStackPlatformType,
+					openstack: OpenStackProviderConfig{
+						providerConfig: *resourcebuilder.OpenStackProviderSpec().WithAvailabilityZone("az-1").Build(),
+					},
+				},
+				failureDomain: failuredomain.NewOpenStackFailureDomain(
+					resourcebuilder.OpenStackFailureDomain().WithAvailabilityZone("az-2").Build(),
+				),
+				matchPath:        "OpenStack().Config().AvailabilityZone",
+				matchExpectation: "az-2",
+			}),
 		)
 	})
 
@@ -293,6 +331,11 @@ var _ = Describe("Provider Config", func() {
 				expectedPlatformType:  configv1.GCPPlatformType,
 				providerSpecBuilder:   resourcebuilder.GCPProviderSpec(),
 				providerConfigMatcher: HaveField("GCP().Config()", *resourcebuilder.GCPProviderSpec().Build()),
+			}),
+			Entry("with an OpenStack config with failure domains", providerConfigTableInput{
+				expectedPlatformType:  configv1.OpenStackPlatformType,
+				providerSpecBuilder:   resourcebuilder.OpenStackProviderSpec(),
+				providerConfigMatcher: HaveField("OpenStack().Config()", *resourcebuilder.OpenStackProviderSpec().Build()),
 			}),
 		)
 	})
@@ -407,6 +450,17 @@ var _ = Describe("Provider Config", func() {
 				},
 				expectedFailureDomain: failuredomain.NewGCPFailureDomain(
 					resourcebuilder.GCPFailureDomain().WithZone("us-central1-a").Build(),
+				),
+			}),
+			Entry("with an OpenStack az-3 failure domain", extractFailureDomainTableInput{
+				providerConfig: &providerConfig{
+					platformType: configv1.OpenStackPlatformType,
+					openstack: OpenStackProviderConfig{
+						providerConfig: *resourcebuilder.OpenStackProviderSpec().WithAvailabilityZone("az-3").Build(),
+					},
+				},
+				expectedFailureDomain: failuredomain.NewOpenStackFailureDomain(
+					resourcebuilder.OpenStackFailureDomain().WithAvailabilityZone("az-3").Build(),
 				),
 			}),
 		)
@@ -538,6 +592,36 @@ var _ = Describe("Provider Config", func() {
 				},
 				expectedEqual: false,
 			}),
+			Entry("with matching OpenStack configs", equalTableInput{
+				basePC: &providerConfig{
+					platformType: configv1.OpenStackPlatformType,
+					openstack: OpenStackProviderConfig{
+						providerConfig: *resourcebuilder.OpenStackProviderSpec().WithAvailabilityZone("az-1").Build(),
+					},
+				},
+				comparePC: &providerConfig{
+					platformType: configv1.OpenStackPlatformType,
+					openstack: OpenStackProviderConfig{
+						providerConfig: *resourcebuilder.OpenStackProviderSpec().WithAvailabilityZone("az-1").Build(),
+					},
+				},
+				expectedEqual: true,
+			}),
+			Entry("with mis-matched OpenStack configs", equalTableInput{
+				basePC: &providerConfig{
+					platformType: configv1.OpenStackPlatformType,
+					openstack: OpenStackProviderConfig{
+						providerConfig: *resourcebuilder.OpenStackProviderSpec().WithAvailabilityZone("az-1").Build(),
+					},
+				},
+				comparePC: &providerConfig{
+					platformType: configv1.OpenStackPlatformType,
+					openstack: OpenStackProviderConfig{
+						providerConfig: *resourcebuilder.OpenStackProviderSpec().WithAvailabilityZone("az-2").Build(),
+					},
+				},
+				expectedEqual: false,
+			}),
 		)
 	})
 
@@ -585,6 +669,15 @@ var _ = Describe("Provider Config", func() {
 					},
 				},
 				expectedOut: resourcebuilder.GCPProviderSpec().BuildRawExtension().Raw,
+			}),
+			Entry("with an OpenStack config", rawConfigTableInput{
+				providerConfig: &providerConfig{
+					platformType: configv1.OpenStackPlatformType,
+					openstack: OpenStackProviderConfig{
+						providerConfig: *resourcebuilder.OpenStackProviderSpec().Build(),
+					},
+				},
+				expectedOut: resourcebuilder.OpenStackProviderSpec().BuildRawExtension().Raw,
 			}),
 		)
 	})

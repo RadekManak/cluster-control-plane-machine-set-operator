@@ -23,6 +23,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	machinev1 "github.com/openshift/api/machine/v1"
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 )
 
 const (
@@ -135,7 +136,7 @@ func (f failureDomain) Equal(other FailureDomain) bool {
 	case configv1.GCPPlatformType:
 		return f.gcp == other.GCP()
 	case configv1.OpenStackPlatformType:
-		return f.openStack == other.OpenStack()
+		return reflect.DeepEqual(f.openStack, other.OpenStack())
 	}
 
 	return false
@@ -309,10 +310,32 @@ func gcpFailureDomainToString(fd machinev1.GCPFailureDomain) string {
 	return unknownFailureDomain
 }
 
+func openStackSubnetToString(subnet machinev1alpha1.SubnetParam) string {
+	if subnet.UUID != "" {
+		return fmt.Sprintf("Subnet{UUID:%s}", subnet.UUID)
+	}
+	if subnet.Filter.Name != "" {
+		return fmt.Sprintf("Subnet{Filter:{Name:%s, Tags:{%s}}}", subnet.Filter.Name, subnet.Filter.Tags)
+	}
+
+	return ""
+}
+
 // openStackFailureDomainToString converts the OpenStackFailureDomain into a string.
 func openStackFailureDomainToString(fd machinev1.OpenStackFailureDomain) string {
-	if fd.AvailabilityZone != "" {
-		return fmt.Sprintf("OpenStackFailureDomain{AvailabilityZone:%s}", fd.AvailabilityZone)
+	stringComputezone, stringStorageZone, stringSubnet := "", "", ""
+	if fd.ComputeZone != "" {
+		stringComputezone = fmt.Sprintf("ComputeZone:%s, ", fd.ComputeZone)
+	}
+
+	if fd.StorageZone != "" {
+		stringStorageZone = fmt.Sprintf("StorageZone:%s, ", fd.StorageZone)
+	}
+
+	stringSubnet = openStackSubnetToString(fd.Subnet)
+
+	if stringComputezone != "" || stringStorageZone != "" || stringSubnet != "" {
+		return fmt.Sprintf("OpenStackFailureDomain{%s%s%s}", stringComputezone, stringStorageZone, stringSubnet)
 	}
 
 	return unknownFailureDomain

@@ -223,10 +223,19 @@ spec:
                                 description: OpenStackFailureDomain configures failure domain information for the OpenStack platform
                                 type: object
                                 required:
-                                  - availabilityZone
+                                  - Subnet
+                                optional:
+                                  - ComputeZone
+                                  - StorageZone
                                 properties:
-                                  availabilityZone:
-                                    description: The availability zone from which to launch the server.
+                                  Subnet:
+                                    description: Subnet is the UUID of the OpenStack subnet nodes will be provisioned on
+                                    type: string
+                                  ComputeZone:
+                                    description: ComputeZone is the compute zone on which the nodes belonging to the failure domain must be provisioned. If not specified, the nodes are provisioned in the OpenStack Nova default availabity zone.
+                                    type: string
+                                  StorageZone:
+                                    description: StorageZone is the storage zone from where volumes should be provisioned for the nodes belonging to the failure domain. If not specified, volumes are provisioned from the default storage availabity zone.
                                     type: string
                             platform:
                               description: Platform identifies the platform for which the FailureDomain represents. Currently supported values are AWS, Azure, GCP and OpenStack.

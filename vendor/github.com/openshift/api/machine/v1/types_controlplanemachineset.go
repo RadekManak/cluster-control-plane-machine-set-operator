@@ -2,6 +2,7 @@ package v1
 
 import (
 	configv1 "github.com/openshift/api/config/v1"
+	machinev1alpha1 "github.com/openshift/api/machine/v1alpha1"
 	machinev1beta1 "github.com/openshift/api/machine/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -246,9 +247,20 @@ type GCPFailureDomain struct {
 
 // OpenStackFailureDomain configures failure domain information for the OpenStack platform
 type OpenStackFailureDomain struct {
-	// The availability zone from which to launch the server.
-	// +kubebuilder:validation:Required
-	AvailabilityZone string `json:"availabilityZone"`
+	// ComputeZone is the compute zone on which the nodes belonging to the
+	// failure domain must be provisioned.
+	// If not specified, the nodes are provisioned in the OpenStack Nova default availabity zone.
+	// +optional
+	ComputeZone string `json:"computeZone,omitempty"`
+
+	// StorageZone is the storage zone from where volumes should be provisioned
+	// for the nodes belonging to the failure domain.
+	// If not specified, volumes are provisioned from the default storage availabity zone.
+	// +optional
+	StorageZone string `json:"storageZone,omitempty"`
+
+	// Subnet specifies the OpenStack subnet nodes will be provisioned on
+	Subnet machinev1alpha1.SubnetParam `json:"subnet"`
 }
 
 // ControlPlaneMachineSetStatus represents the status of the ControlPlaneMachineSet CRD.
@@ -260,7 +272,7 @@ type ControlPlaneMachineSetStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// ObservedGeneration is the most recent generation observed for this
 	// ControlPlaneMachineSet. It corresponds to the ControlPlaneMachineSets's generation,
