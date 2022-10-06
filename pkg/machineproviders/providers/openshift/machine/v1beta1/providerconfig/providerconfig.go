@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	configv1 "github.com/openshift/api/config/v1"
 	machinev1 "github.com/openshift/api/machine/v1"
@@ -77,6 +78,9 @@ type ProviderConfig interface {
 
 	// GCP returns the GCPProviderConfig if the platform type is GCP.
 	GCP() GCPProviderConfig
+
+	// Generic returns the GenericProviderConfig if we are on a platform that is using generic provider abstraction.
+	Generic() GenericProviderConfig
 }
 
 // NewProviderConfigFromMachineTemplate creates a new ProviderConfig from the provided machine template.
@@ -100,6 +104,10 @@ func NewProviderConfigFromMachine(machine machinev1beta1.Machine) (ProviderConfi
 }
 
 func newProviderConfigFromProviderSpec(providerSpec machinev1beta1.ProviderSpec, platformType configv1.PlatformType) (ProviderConfig, error) {
+	if providerSpec.Value == nil {
+		return nil, errNilProviderSpec
+	}
+
 	switch platformType {
 	case configv1.AWSPlatformType:
 		return newAWSProviderConfig(providerSpec.Value)
@@ -107,8 +115,10 @@ func newProviderConfigFromProviderSpec(providerSpec machinev1beta1.ProviderSpec,
 		return newAzureProviderConfig(providerSpec.Value)
 	case configv1.GCPPlatformType:
 		return newGCPProviderConfig(providerSpec.Value)
-	default:
+	case configv1.NonePlatformType:
 		return nil, fmt.Errorf("%w: %s", errUnsupportedPlatformType, platformType)
+	default:
+		return newGenericProviderConfig(providerSpec.Value, platformType)
 	}
 }
 
@@ -118,6 +128,7 @@ type providerConfig struct {
 	aws          AWSProviderConfig
 	azure        AzureProviderConfig
 	gcp          GCPProviderConfig
+	generic      GenericProviderConfig
 }
 
 // InjectFailureDomain is used to inject a failure domain into the ProviderConfig.
@@ -137,7 +148,7 @@ func (p providerConfig) InjectFailureDomain(fd failuredomain.FailureDomain) (Pro
 		newConfig.azure = p.Azure().InjectFailureDomain(fd.Azure())
 	case configv1.GCPPlatformType:
 		newConfig.gcp = p.GCP().InjectFailureDomain(fd.GCP())
-	default:
+	case configv1.NonePlatformType:
 		return nil, fmt.Errorf("%w: %s", errUnsupportedPlatformType, p.platformType)
 	}
 
@@ -153,9 +164,9 @@ func (p providerConfig) ExtractFailureDomain() failuredomain.FailureDomain {
 		return failuredomain.NewAzureFailureDomain(p.Azure().ExtractFailureDomain())
 	case configv1.GCPPlatformType:
 		return failuredomain.NewGCPFailureDomain(p.GCP().ExtractFailureDomain())
-	default:
-		return nil
 	}
+
+	return nil
 }
 
 // Equal compares two ProviderConfigs to determine whether or not they are equal.
@@ -175,8 +186,10 @@ func (p providerConfig) Equal(other ProviderConfig) (bool, error) {
 		return reflect.DeepEqual(p.azure.providerConfig, other.Azure().providerConfig), nil
 	case configv1.GCPPlatformType:
 		return reflect.DeepEqual(p.gcp.providerConfig, other.GCP().providerConfig), nil
-	default:
+	case configv1.NonePlatformType:
 		return false, errUnsupportedPlatformType
+	default:
+		return reflect.DeepEqual(p.generic.providerSpec, other.Generic().providerSpec), nil
 	}
 }
 
@@ -194,8 +207,10 @@ func (p providerConfig) RawConfig() ([]byte, error) {
 		rawConfig, err = json.Marshal(p.azure.providerConfig)
 	case configv1.GCPPlatformType:
 		rawConfig, err = json.Marshal(p.gcp.providerConfig)
-	default:
+	case configv1.NonePlatformType:
 		return nil, errUnsupportedPlatformType
+	default:
+		rawConfig, err = p.generic.providerSpec.Raw, nil
 	}
 
 	if err != nil {
@@ -225,16 +240,36 @@ func (p providerConfig) GCP() GCPProviderConfig {
 	return p.gcp
 }
 
+// Generic returns the GenericProviderConfig if the platform type is generic.
+func (p providerConfig) Generic() GenericProviderConfig {
+	return p.generic
+}
+
 // getPlatformTypeFromProviderSpecKind determines machine platform from providerSpec kind.
 func getPlatformTypeFromProviderSpecKind(kind string) (configv1.PlatformType, bool) {
 	var providerSpecKindToPlatformType = map[string]configv1.PlatformType{
-		"AWSMachineProviderConfig":     configv1.AWSPlatformType,
-		"AzureMachineProviderSpec":     configv1.AzurePlatformType,
-		"GCPMachineProviderSpec":       configv1.GCPPlatformType,
-		"OpenStackMachineProviderSpec": configv1.OpenStackPlatformType,
+		"AWSMachineProviderConfig":          configv1.AWSPlatformType,
+		"AzureMachineProviderSpec":          configv1.AzurePlatformType,
+		"BareMetalMachineProviderSpec":      configv1.BareMetalPlatformType,
+		"GCPMachineProviderSpec":            configv1.GCPPlatformType,
+		"LibvirtMachineProviderConfig":      configv1.LibvirtPlatformType,
+		"OpenStackMachineProviderSpec":      configv1.OpenStackPlatformType,
+		"VSphereMachineProviderSpec":        configv1.VSpherePlatformType,
+		"OvirtMachineProviderSpec":          configv1.OvirtPlatformType,
+		"IBMCloudMachineProviderSpec":       configv1.IBMCloudPlatformType,
+		"KubevirtMachineProviderSpec":       configv1.KubevirtPlatformType,
+		"EquinixMetalMachineProviderConfig": configv1.EquinixMetalPlatformType,
+		"PowerVSMachineProviderConfig":      configv1.PowerVSPlatformType,
+		"AlibabaCloudMachineProviderConfig": configv1.AlibabaCloudPlatformType,
+		"NutanixMachineProviderConfig":      configv1.NutanixPlatformType,
 	}
 
 	platformType, ok := providerSpecKindToPlatformType[kind]
+
+	// Attempt to operate on unknown platforms. This should work if the platform does not require failure domains support.
+	if !ok && (strings.Contains(kind, "MachineProviderConfig") || strings.Contains(kind, "MachineProviderSpec")) {
+		return "UnknownPlatform", true
+	}
 
 	return platformType, ok
 }

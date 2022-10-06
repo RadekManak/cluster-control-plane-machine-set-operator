@@ -68,12 +68,12 @@ var _ = Describe("Provider Config", func() {
 			Expect(providerConfig.Type()).To(Equal(in.expectedPlatformType))
 			Expect(providerConfig).To(in.providerConfigMatcher)
 		},
-			Entry("with an invalid platform type", providerConfigTableInput{
+			Entry("with missing provider spec on unknown platform type", providerConfigTableInput{
 				modifyTemplate: func(in *machinev1.ControlPlaneMachineSetTemplate) {
 					// The platform type should be inferred from here first.
-					in.OpenShiftMachineV1Beta1Machine.FailureDomains.Platform = configv1.PlatformType("invalid")
+					in.OpenShiftMachineV1Beta1Machine.FailureDomains.Platform = configv1.PlatformType("unknown")
 				},
-				expectedError: fmt.Errorf("%w: %s", errUnsupportedPlatformType, "invalid"),
+				expectedError: errNilProviderSpec,
 			}),
 			Entry("with an AWS config with failure domains", providerConfigTableInput{
 				expectedPlatformType:  configv1.AWSPlatformType,
@@ -363,7 +363,11 @@ var _ = Describe("Provider Config", func() {
 		DescribeTable("should correctly extract the failure domain", func(in extractFailureDomainTableInput) {
 			fd := in.providerConfig.ExtractFailureDomain()
 
-			Expect(fd).To(Equal(in.expectedFailureDomain))
+			if in.expectedFailureDomain == nil {
+				Expect(fd).To(BeNil())
+			} else {
+				Expect(fd).To(Equal(in.expectedFailureDomain))
+			}
 		},
 			Entry("with an AWS us-east-1a failure domain", extractFailureDomainTableInput{
 				providerConfig: &providerConfig{
@@ -408,6 +412,15 @@ var _ = Describe("Provider Config", func() {
 				expectedFailureDomain: failuredomain.NewGCPFailureDomain(
 					resourcebuilder.GCPFailureDomain().WithZone("us-central1-a").Build(),
 				),
+			}),
+			Entry("on VSphere without failure domain", extractFailureDomainTableInput{
+				providerConfig: &providerConfig{
+					platformType: configv1.VSpherePlatformType,
+					generic: GenericProviderConfig{
+						providerSpec: resourcebuilder.VSphereProviderSpec().BuildRawExtension(),
+					},
+				},
+				expectedFailureDomain: nil,
 			}),
 		)
 	})
@@ -538,6 +551,52 @@ var _ = Describe("Provider Config", func() {
 				},
 				expectedEqual: false,
 			}),
+			Entry("with matching Generic configs", equalTableInput{
+				basePC: &providerConfig{
+					platformType: configv1.VSpherePlatformType,
+					generic: GenericProviderConfig{
+						providerSpec: resourcebuilder.VSphereProviderSpec().BuildRawExtension(),
+					},
+				},
+				comparePC: &providerConfig{
+					platformType: configv1.VSpherePlatformType,
+					generic: GenericProviderConfig{
+						providerSpec: resourcebuilder.VSphereProviderSpec().BuildRawExtension(),
+					},
+				},
+				expectedEqual: true,
+			}),
+			Entry("with mis-matched spec using Generic configs", equalTableInput{
+				basePC: &providerConfig{
+					platformType: configv1.VSpherePlatformType,
+					generic: GenericProviderConfig{
+						providerSpec: resourcebuilder.VSphereProviderSpec().BuildRawExtension(),
+					},
+				},
+				comparePC: &providerConfig{
+					platformType: configv1.VSpherePlatformType,
+					generic: GenericProviderConfig{
+						providerSpec: resourcebuilder.VSphereProviderSpec().WithTemplate("different-template").BuildRawExtension(),
+					},
+				},
+				expectedEqual: false,
+			}),
+			Entry("with mis-matched platform type using Generic configs", equalTableInput{
+				basePC: &providerConfig{
+					platformType: configv1.BareMetalPlatformType,
+					generic: GenericProviderConfig{
+						providerSpec: resourcebuilder.VSphereProviderSpec().BuildRawExtension(),
+					},
+				},
+				comparePC: &providerConfig{
+					platformType: configv1.VSpherePlatformType,
+					generic: GenericProviderConfig{
+						providerSpec: resourcebuilder.VSphereProviderSpec().BuildRawExtension(),
+					},
+				},
+				expectedEqual: false,
+				expectedError: errMismatchedPlatformTypes,
+			}),
 		)
 	})
 
@@ -585,6 +644,15 @@ var _ = Describe("Provider Config", func() {
 					},
 				},
 				expectedOut: resourcebuilder.GCPProviderSpec().BuildRawExtension().Raw,
+			}),
+			Entry("with a VSphere config", rawConfigTableInput{
+				providerConfig: providerConfig{
+					platformType: configv1.VSpherePlatformType,
+					generic: GenericProviderConfig{
+						providerSpec: resourcebuilder.VSphereProviderSpec().BuildRawExtension(),
+					},
+				},
+				expectedOut: resourcebuilder.VSphereProviderSpec().BuildRawExtension().Raw,
 			}),
 		)
 	})
