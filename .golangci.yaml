@@ -63,8 +63,11 @@ linters:
     - wsl
 linters-settings:
   goheader:
+    values:
+      regexp:
+        validYears: "2022|2023"
     template: |-
-      Copyright {{YEAR}} Red Hat, Inc.
+      Copyright {{validYears}} Red Hat, Inc.
 
       Licensed under the Apache License, Version 2.0 (the "License");
       you may not use this file except in compliance with the License.
